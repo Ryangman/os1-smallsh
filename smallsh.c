@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <limits.h>
+#include <errno.h>
 
 
 typedef struct Command
@@ -22,7 +23,8 @@ typedef struct Command
     int foreground;
 } command;
 
-static int foregroundOnlyMode = 0;
+//Boolean integer representing if the shell is in foreground only mode or not
+int foregroundOnlyMode = 0;
 
 /**
  * Handler for SIGTSTP signal, which toggles the parent process ability to run commands in the background
@@ -44,6 +46,58 @@ void handleSIGTSTP(int signo){
     return;
 }
 
+/**
+ * Converts input from getline into array of command line arguments, replacing $$ variable with current Process PID
+ */
+char** parseCommandInput(char* inputText){
+    char** argList = malloc(512 * sizeof(char*));
+    
+    //Track Current Process Pid
+    char currentPid [16];
+    sprintf(currentPid, "%d", getpid()); 
+
+    const char cmdDelim[] = " \n"; //tokenize at space and newline
+    char *saveptr = NULL; 
+    char *cmdToken = strtok_r(inputText, cmdDelim, &saveptr); 
+    int i = 0;
+
+    while(cmdToken != NULL && i < 511){
+        argList[i] = strdup(cmdToken);
+        
+        //Replace Every instance of '$$' with PID
+        char *pidLoc = strstr(argList[i], "$$");
+        while(pidLoc != NULL) {
+            strcpy(pidLoc, currentPid);
+            pidLoc = strstr(argList[i], "$$");
+        }
+        //Get Next Token
+        cmdToken = strtok_r(NULL, cmdDelim, &saveptr);
+        i++;
+    }
+
+    return argList;
+}
+
+/**
+ * Returns enum determining type of argument passed into command line
+*/
+enum CommandType {
+    CMD_EXIT,
+    CMD_CD,
+    CMD_STATUS,
+    CMD_DEFAULT
+};
+enum CommandType getCommandType(char *arg) {
+    if (strcmp("exit", arg) == 0) {
+        return CMD_EXIT;
+    } else if (strcmp("cd", arg) == 0) {
+        return CMD_CD;
+    } else if (strcmp("status", arg) == 0){
+        return CMD_STATUS;
+    } else {
+        return CMD_DEFAULT;
+    }
+}
 
 
 int main(int arc, char* argv[]){
@@ -70,15 +124,39 @@ int main(int arc, char* argv[]){
         printf(": ");
         fflush(stdout);
 
-        getline(&cmdText, &lenRead ,stdin);
+        //This handles issue where getline crashes on SIGTSTP
+        ssize_t bytes_read;
+        do {
+            bytes_read = getline(&cmdText, &lenRead, stdin);
+        } while (bytes_read == -1 && errno == EINTR);
         
-        printf("Recieved String: '%s'", cmdText);
+        // Reprompt on comment or newline
+        if (*cmdText == '#' || *cmdText == '\n') {continue;}
+
+        //Seperate cmdText into arguments
+        char** argList = parseCommandInput(cmdText);
+
+        for(int i = 0; argList[i] != NULL && i < 511; i++){
+            printf("arg[%d]: %s\n", i, argList[i]);
+        }
+        //Break from Main Process Loop if Error in Command
+        if (*argList == NULL || strcmp("<", *argList) == 0 || strcmp(">", *argList) == 0 || strcmp("&", *argList) == 0) {break;}
         
-        //Reprompt on comment or newline  
-        if(*cmdText == '#' || *cmdText == '\n'){ continue;}
-        
+        //Perform program requested, if Not exit, cd, or status, pass off to fork
+        switch (getCommandType(*argList)){
+            case CMD_EXIT:
+                printf("handling exit\n");
+                break;
+            case CMD_CD:
+                printf("handling cd\n");
+                break;
+            case CMD_STATUS:
+                printf("handling status\n");
+                break;
+            default:
+                printf("trying forking\n");
+                break;
+        }
     }
-
-
     return EXIT_SUCCESS;
 }
