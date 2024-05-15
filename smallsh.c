@@ -210,6 +210,7 @@ int main(int arc, char* argv[]){
                 printf("handling status\n");
                 break;
             default:
+            {
                 command newCommand;
                 int cmdErrors = commandStructCreate(&newCommand, argList, foregroundOnlyMode);
                 if(cmdErrors != 0 ){
@@ -238,6 +239,7 @@ int main(int arc, char* argv[]){
                             }    
                     }
                 }
+            }
                 break;
         }
         // freeArgs(argList);
