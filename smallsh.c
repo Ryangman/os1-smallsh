@@ -46,6 +46,15 @@ void handleSIGTSTP(int signo){
     return;
 }
 
+void freeArgs(char** argList){
+	char* currentArg = argList[0];
+    for (int i = 0; currentArg != NULL && i < 511; i++) {
+		free(currentArg);
+        currentArg = argList[++i];
+	}
+    free(argList);
+}
+
 /**
  * Converts input from getline into array of command line arguments, replacing $$ variable with current Process PID
  */
@@ -136,19 +145,48 @@ int main(int arc, char* argv[]){
         //Seperate cmdText into arguments
         char** argList = parseCommandInput(cmdText);
 
-        for(int i = 0; argList[i] != NULL && i < 511; i++){
-            printf("arg[%d]: %s\n", i, argList[i]);
-        }
+        // Testing cmdline arg parsing
+        // for(int i = 0; argList[i] != NULL && i < 511; i++){
+        //     printf("arg[%d]: %s\n", i, argList[i]);
+        // }
         //Break from Main Process Loop if Error in Command
         if (*argList == NULL || strcmp("<", *argList) == 0 || strcmp(">", *argList) == 0 || strcmp("&", *argList) == 0) {break;}
         
         //Perform program requested, if Not exit, cd, or status, pass off to fork
         switch (getCommandType(*argList)){
             case CMD_EXIT:
-                printf("handling exit\n");
-                break;
+                freeArgs(argList);
+                //TODO: Kill all background processes
+                
+                free(cmdText);
+                return 0;
             case CMD_CD:
-                printf("handling cd\n");
+                char* startDir = getcwd(NULL, 0);
+                char* homeLink = getenv("HOME");
+                
+                //When Passed No arguments, changes directory to home
+                if (argList[1] == NULL) {
+					if (chdir(homeLink) == 0) {
+						setenv("PWD", homeLink, 1);
+                        printf("WAS %s\n", startDir);
+                        printf("IS %s\n", getcwd(NULL, 0));
+                    }
+				} else {
+                    //Otherwise, attempts to change to directory specified by arg1, 
+                    char* newDir = argList[1];
+                    
+                    if (chdir(newDir) == 0) {
+						char *currDir = getcwd(NULL, 0);
+						setenv("PWD", currDir, 1);
+						printf("WAS %s\n", startDir);
+                        printf("IS %s\n", currDir);
+						free(currDir);
+					} else {
+                        printf("Cannot Change to %s: Not a Directory\n", newDir);
+                    }
+                }
+                free(startDir);
+                fflush(stdout);
                 break;
             case CMD_STATUS:
                 printf("handling status\n");
@@ -157,6 +195,7 @@ int main(int arc, char* argv[]){
                 printf("trying forking\n");
                 break;
         }
+        // freeArgs(argList);
     }
     return EXIT_SUCCESS;
 }
