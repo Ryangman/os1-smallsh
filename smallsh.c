@@ -177,6 +177,7 @@ int main(int arc, char* argv[]){
                 free(cmdText);
                 return 0;
             case CMD_CD:
+            {
                 char* startDir = getcwd(NULL, 0);
                 char* homeLink = getenv("HOME");
                 
@@ -203,6 +204,7 @@ int main(int arc, char* argv[]){
                 }
                 free(startDir);
                 fflush(stdout);
+            }
                 break;
             case CMD_STATUS:
                 printf("handling status\n");
@@ -221,7 +223,7 @@ int main(int arc, char* argv[]){
                             exit(EXIT_FAILURE);
                         case 0:
                             // Child Process actions
-                            printf("Im The child %d, I'm killing myself", getpid());
+                            printf("Im The child %d", getpid());
                             exit(EXIT_SUCCESS); // Immediately kill yourself
                         default:
                             //If newCommand is Foreground, Block and wait
