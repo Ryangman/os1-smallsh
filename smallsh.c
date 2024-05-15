@@ -10,6 +10,7 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <limits.h>
 #include <errno.h>
@@ -107,7 +108,22 @@ enum CommandType getCommandType(char *arg) {
         return CMD_DEFAULT;
     }
 }
-
+int commandStructCreate(command* command, char* argList [512], int foregroundOnlyMode){
+    //Set command structs arglist to NULL for length of command line arguments
+    for (char **argIdx = command->argList; *argIdx != NULL; argIdx++) {
+        *argIdx = NULL;
+    }
+    //Standard Command Setup
+    command->inputFd = STDIN_FILENO;
+	command->outputFd = STDOUT_FILENO;
+	command->foreground = 1;
+    //Iterate through argList to populate structs arglist, and update standard input/output setup if necessary
+    int commandErrors = 0;
+    while(0){
+        // TODO: Finish iterating through arglist
+    }
+    return commandErrors;
+}
 
 int main(int arc, char* argv[]){
     //Setup SIGINT Ignore for Parent Process
@@ -192,7 +208,34 @@ int main(int arc, char* argv[]){
                 printf("handling status\n");
                 break;
             default:
-                printf("trying forking\n");
+                command newCommand;
+                int cmdErrors = commandStructCreate(&newCommand, argList, foregroundOnlyMode);
+                if(cmdErrors != 0 ){
+                    // TODO: Output error message for different types of Errors: expecting filename after redirect, could't open files, unexpected token, etc
+                } else {
+                    // Fork and exec new command
+                    pid_t childCmd = fork();
+                    switch(childCmd){
+                        case -1: 
+                            perror("Abort: Forking Error");
+                            exit(EXIT_FAILURE);
+                        case 0:
+                            // Child Process actions
+                            printf("Im The child %d, I'm killing myself", getpid());
+                            exit(EXIT_SUCCESS); // Immediately kill yourself
+                        default:
+                            //If newCommand is Foreground, Block and wait
+                            if(newCommand.foreground){
+                                int childStatus;
+                                waitpid(childCmd, &childStatus, 0);
+                                printf("My Child Has Died with status %d", childStatus);
+                            } else {
+                                //Otherwise, print PID of child and add to list of ongoing processes
+                                printf("New Background Process with PID[%d]", childCmd);
+                                //TODO: Add To List of ongoing processes
+                            }    
+                    }
+                }
                 break;
         }
         // freeArgs(argList);
