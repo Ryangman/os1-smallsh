@@ -32,6 +32,45 @@ typedef struct ProcessList {
 //Boolean integer representing if the shell is in foreground only mode or not
 int foregroundOnlyMode = 0;
 
+void killFinishedProcesses(ProcessList **head){
+    ProcessList *current = *head;
+    ProcessList *prev = NULL;
+    
+    while(current != NULL){
+        int status;
+        pid_t result = waitpid(current->pid, &status, WNOHANG);
+
+        switch (result){
+        case -1:
+            perror("Waitpid");
+            exit(EXIT_FAILURE);
+        case 0:
+            //Process not finished
+            prev = current;
+            current = current->next;
+            break;
+        default:
+            //Process Finished
+            if(WIFSIGNALED(status)){
+                printf("Process %d was SIGNALED with %d\n", current->pid, WTERMSIG(status));
+            } else {
+                printf("Process %d exited with status %d\n", current->pid, WEXITSTATUS(status));
+            }
+            // Remove finished process from list
+            if (prev == NULL) {
+                // Head of list
+                *head = current->next;
+                free(current);
+                current = *head;
+            } else {
+                prev->next = current->next;
+                free(current);
+                current = prev->next;
+            }
+            break;
+        }
+    }
+}
 /**
  * Handler for SIGTSTP signal, which toggles the parent process ability to run commands in the background
  */
@@ -184,15 +223,11 @@ enum ErrorType commandStructCreate(command* command, char* argList [512]){
 
     return commandErrors;
 }
+
 /**
  * Creates a New Process and pushes it to the end of the list
 */
 void pushNewProcess(ProcessList **curList, pid_t pid, int inputFd, int outputFd){
-    ProcessList *iterator = *curList;
-    while(iterator->next != NULL){
-        iterator = iterator->next;
-    }
-
     //Create new Process
     ProcessList *newProcess = malloc(sizeof(ProcessList));
 	newProcess->pid = pid;
@@ -200,7 +235,16 @@ void pushNewProcess(ProcessList **curList, pid_t pid, int inputFd, int outputFd)
 	newProcess->inputFd = inputFd;
 	newProcess->outputFd = outputFd;
 
-    iterator->next = newProcess;
+    if (*curList == NULL) {
+        *curList = newProcess;
+    } else {
+        // Traverse to the end of the list and add the new process
+        ProcessList *iterator = *curList;
+        while (iterator->next != NULL) {
+            iterator = iterator->next;
+        }
+        iterator->next = newProcess;
+    }
     return;
 }
 
@@ -223,6 +267,7 @@ int main(int arc, char* argv[]){
     char* cmdText = 0;
     size_t lenRead = 0;
     int lastForegroundStatus = 0;
+    int terminatedBySignal = 0;
     ProcessList *backgroundProcessList = NULL;
 
     while(1){
@@ -236,6 +281,8 @@ int main(int arc, char* argv[]){
             bytes_read = getline(&cmdText, &lenRead, stdin);
         } while (bytes_read == -1 && errno == EINTR);
         
+        //Check and Remove any Finished Processes
+        killFinishedProcesses(&backgroundProcessList);
         // Reprompt on comment or newline
         if (*cmdText == '#' || *cmdText == '\n') {continue;}
 
@@ -249,8 +296,11 @@ int main(int arc, char* argv[]){
         switch (getCommandType(*argList)){
             case CMD_EXIT:
                 freeArgs(argList);
-                //TODO: Kill all background processes
-                
+                while (backgroundProcessList != NULL) {
+                    ProcessList *temp = backgroundProcessList;
+                    backgroundProcessList =  backgroundProcessList->next;
+                    free(temp);
+                }
                 free(cmdText);
                 return 0;
             case CMD_CD:
@@ -262,8 +312,6 @@ int main(int arc, char* argv[]){
                 if (argList[1] == NULL) {
 					if (chdir(homeLink) == 0) {
 						setenv("PWD", homeLink, 1);
-                        printf("WAS %s\n", startDir);
-                        printf("IS %s\n", getcwd(NULL, 0));
                     }
 				} else {
                     //Otherwise, attempts to change to directory specified by arg1, 
@@ -272,8 +320,6 @@ int main(int arc, char* argv[]){
                     if (chdir(newDir) == 0) {
 						char *currDir = getcwd(NULL, 0);
 						setenv("PWD", currDir, 1);
-						printf("WAS %s\n", startDir);
-                        printf("IS %s\n", currDir);
 						free(currDir);
 					} else {
                         printf("Cannot Change to %s: Not a Directory\n", newDir);
@@ -284,7 +330,11 @@ int main(int arc, char* argv[]){
             }
                 break;
             case CMD_STATUS:
-                printf("Last Foreground Process Exited with status %d\n", lastForegroundStatus);
+                if(terminatedBySignal){
+                    printf("Last Foreground Process Signaled with %d", lastForegroundStatus);
+                } else{
+                    printf("Last Foreground Process Exited with status %d\n", lastForegroundStatus);
+                }
                 break;
             default:
             {
@@ -301,6 +351,14 @@ int main(int arc, char* argv[]){
                         printf("File could not be opened\n");
                         continue;
                 }
+                // Testing Proper Struct Creation
+                // printf("Arguments:\n");
+                // for (int i = 0; i < 512 && newCommand.argList[i] != NULL ; ++i) {
+                //     printf("argList[%d]: %s\n", i, newCommand.argList[i]);
+                // }
+                // printf("Input File Descriptor: %d\n", newCommand.inputFd);
+                // printf("Output File Descriptor: %d\n", newCommand.outputFd);
+                // printf("Foreground: %d\n", newCommand.foreground);
                 if(cmdErrors == NO_ERROR){
                     // Fork and exec new command
                     pid_t childCmd = fork();
@@ -319,30 +377,41 @@ int main(int arc, char* argv[]){
 								actionSIGINT.sa_handler = SIG_DFL;
 								sigaction(SIGINT, &actionSIGINT, NULL);
 							}
-
 							//Redirect Input and Output to struct values
-							if (dup2(newCommand.inputFd, STDIN_FILENO) == -1) { perror("IO Redirection Failed"); }
-							if (dup2(newCommand.outputFd, STDOUT_FILENO) == -1) { perror("IO Redirection Failed"); }
+							if (dup2(newCommand.inputFd, STDIN_FILENO) == -1) { printf("IO Redirection Failed"); exit(EXIT_FAILURE); }
+							if (dup2(newCommand.outputFd, STDOUT_FILENO) == -1) { printf("IO Redirection Failed"); exit(EXIT_FAILURE); }
                             
                             //Execute Command
                             execvp(newCommand.argList[0], newCommand.argList);
+                            perror("execvp error");
                             //Cleanup
-                            //TODO: Free Struct and Kill all Background Processes
+                            while (backgroundProcessList != NULL) {
+								ProcessList *temp = backgroundProcessList;
+								backgroundProcessList =  backgroundProcessList->next;
+								free(temp);
+							}
                             freeArgs(argList);
                             free(cmdText);
 
-                            exit(EXIT_SUCCESS); // Process kills itself
+                            exit(EXIT_FAILURE); // Process kills itself
                         default:
                             //If newCommand is Foreground, Block and wait
                             if(newCommand.foreground){
                                 int childStatus;
                                 waitpid(childCmd, &childStatus, 0);
-                                // printf("My Child Has Died with status %d", childStatus);
-                                lastForegroundStatus = WIFEXITED(childStatus);
+                                if(terminatedBySignal = WIFSIGNALED(childStatus)){
+                                    lastForegroundStatus = WTERMSIG(childStatus);
+                                } else {
+                                    lastForegroundStatus = WEXITSTATUS(childStatus);
+                                }   
+                                //Close Open File Descriptors
+                                if (newCommand.inputFd != STDIN_FILENO) { close(newCommand.inputFd); }
+								if (newCommand.outputFd != STDOUT_FILENO) { close(newCommand.outputFd); }
+
 
                             } else {
                                 //Otherwise, print PID of child and add to list of ongoing processes
-                                printf("New Background Process with PID[%d]", childCmd);
+                                printf("New Background Process with PID[%d]\n", childCmd);
                                 pushNewProcess(&backgroundProcessList, childCmd, newCommand.inputFd, newCommand.outputFd);
                             }    
                     }
