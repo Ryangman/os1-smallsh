@@ -13,6 +13,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <errno.h>
+#include <ctype.h>
 
 typedef struct Command
 {
@@ -122,7 +123,9 @@ char** parseCommandInput(char* inputText){
     int i = 0;
 
     while(cmdToken != NULL && i < 511){
-        argList[i] = strdup(cmdToken);
+        if(isprint(*cmdToken)){
+            argList[i] = strdup(cmdToken);
+        }   
         
         //Replace Every instance of '$$' with PID
         char *pidLoc = strstr(argList[i], "$$");
@@ -274,7 +277,7 @@ int main(int arc, char* argv[]){
     sigaction(SIGTSTP, &actionSIGTSTP, NULL);
 
 
-    char* cmdText = 0;
+    char* cmdText = NULL;
     size_t lenRead = 0;
     int lastForegroundStatus = 0;
     int terminatedBySignal = 0;
