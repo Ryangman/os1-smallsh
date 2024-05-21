@@ -295,15 +295,16 @@ int main(int arc, char* argv[]){
         ssize_t bytes_read;
         do {
             bytes_read = getline(&cmdText, &lenRead, stdin);
-        } while (bytes_read == -1 && errno == EINTR);
-        
+        } while (bytes_read == -1 && errno == EINTR);    
         
         // Reprompt on comment or newline
         if (*cmdText == '#' || *cmdText == '\n') {continue;}
 
         //Seperate cmdText into arguments
         char** argList = parseCommandInput(cmdText);
-
+        for (int i = 0; argList[i] != NULL; i++) {
+            printf("arglist[%d]: %s\n", i, argList[i]);
+         }
         //Break from Main Process Loop if Fatal Error in command (No arguments, or first argument >, <, or &)
         if (*argList == NULL || strcmp("<", *argList) == 0 || strcmp(">", *argList) == 0 || strcmp("&", *argList) == 0) {break;}
         
