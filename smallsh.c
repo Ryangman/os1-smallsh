@@ -367,13 +367,13 @@ int main(int arc, char* argv[]){
                         continue;
                 }
                 // Testing Proper Struct Creation
-                // printf("Arguments:\n");
-                // for (int i = 0; i < 512 && newCommand.argList[i] != NULL ; ++i) {
-                //     printf("argList[%d]: %s\n", i, newCommand.argList[i]);
-                // }
-                // printf("Input File Descriptor: %d\n", newCommand.inputFd);
-                // printf("Output File Descriptor: %d\n", newCommand.outputFd);
-                // printf("Foreground: %d\n", newCommand.foreground);
+                printf("Arguments:\n");
+                for (int i = 0; i < 512 && newCommand.argList[i] != NULL ; ++i) {
+                    printf("argList[%d]: %s\n", i, newCommand.argList[i]);
+                }
+                printf("Input File Descriptor: %d\n", newCommand.inputFd);
+                printf("Output File Descriptor: %d\n", newCommand.outputFd);
+                printf("Foreground: %d\n", newCommand.foreground);
                 if(cmdErrors == NO_ERROR){
                     // Fork and exec new command
                     pid_t childCmd = fork();
