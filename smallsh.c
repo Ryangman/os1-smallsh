@@ -169,9 +169,13 @@ enum ErrorType {
 };
 enum ErrorType commandStructCreate(command* command, char* argList [512]){
     //Set command structs arglist to NULL for length of command line arguments
-    for (char **argIdx = command->argList; *argIdx != NULL; argIdx++) {
-        *argIdx = NULL;
-    }
+    memset(command->argList, 0, sizeof(command->argList));
+    
+    // printf("Initialized to null:\n");
+    // for (int i = 0; command->argList[i] != NULL; i++) {
+    //         printf("arglist[%d]: %s\n", i, command->argList[i]);
+    // }
+    // printf("Finished\n");
     //Default Command Setup
     command->inputFd = STDIN_FILENO;
 	command->outputFd = STDOUT_FILENO;
@@ -225,11 +229,18 @@ enum ErrorType commandStructCreate(command* command, char* argList [512]){
         //If none of those cases apply, append the argument to the first non-null spot in the command struct
         else {
             command->argList[commandNum] = argList[i];
+            // printf("newArg[%d]: %s\n", commandNum, command->argList[commandNum]);
             commandNum++;
             i++;
+
         }
 
     }
+    // printf("Finished Parsing Struct\n");
+    // for (int i = 0; command->argList[i] != NULL; i++) {
+    //         printf("arglist[%d]: %s\n", i, command->argList[i]);
+    // }
+    // printf("Read Everything\n");
     //Redirect input and output to dev/null for background processes if not already redirected
     if(!command->foreground && command->inputFd == STDIN_FILENO) { command->inputFd = open("/dev/null", O_RDONLY);}
     if(!command->foreground && command->outputFd == STDOUT_FILENO) { command->outputFd = open("/dev/null", O_WRONLY);}
@@ -302,9 +313,7 @@ int main(int arc, char* argv[]){
 
         //Seperate cmdText into arguments
         char** argList = parseCommandInput(cmdText);
-        for (int i = 0; argList[i] != NULL; i++) {
-            printf("arglist[%d]: %s\n", i, argList[i]);
-         }
+        
         //Break from Main Process Loop if Fatal Error in command (No arguments, or first argument >, <, or &)
         if (*argList == NULL || strcmp("<", *argList) == 0 || strcmp(">", *argList) == 0 || strcmp("&", *argList) == 0) {break;}
         
@@ -371,13 +380,13 @@ int main(int arc, char* argv[]){
                         continue;
                 }
                 // Testing Proper Struct Creation
-                printf("Arguments:\n");
-                for (int i = 0; i < 512 && newCommand.argList[i] != NULL ; ++i) {
-                    printf("argList[%d]: %s\n", i, newCommand.argList[i]);
-                }
-                printf("Input File Descriptor: %d\n", newCommand.inputFd);
-                printf("Output File Descriptor: %d\n", newCommand.outputFd);
-                printf("Foreground: %d\n", newCommand.foreground);
+                // printf("Arguments:\n");
+                // for (int i = 0; i < 512 && newCommand.argList[i] != NULL ; ++i) {
+                //     printf("argList[%d]: %s\n", i, newCommand.argList[i]);
+                // }
+                // printf("Input File Descriptor: %d\n", newCommand.inputFd);
+                // printf("Output File Descriptor: %d\n", newCommand.outputFd);
+                // printf("Foreground: %d\n", newCommand.foreground);
                 if(cmdErrors == NO_ERROR){
                     // Fork and exec new command
                     pid_t childCmd = fork();
