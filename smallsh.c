@@ -31,7 +31,9 @@ typedef struct ProcessList {
 
 //Boolean integer representing if the shell is in foreground only mode or not
 int foregroundOnlyMode = 0;
-
+/**
+ * Checks every process held in the backgroundprocesses list, and If they have completed, print their exiting information and remove them from the list
+*/
 void killFinishedProcesses(ProcessList **head){
     ProcessList *current = *head;
     ProcessList *prev = NULL;
@@ -70,6 +72,7 @@ void killFinishedProcesses(ProcessList **head){
             break;
         }
     }
+    return;
 }
 /**
  * Handler for SIGTSTP signal, which toggles the parent process ability to run commands in the background
@@ -90,6 +93,9 @@ void handleSIGTSTP(int signo){
     }
     return;
 }
+/**
+ * Frees an array of command line arguments
+*/
 
 void freeArgs(char** argList){
 	char* currentArg = argList[0];
@@ -186,7 +192,7 @@ enum ErrorType commandStructCreate(command* command, char* argList [512]){
                 break;
             }
             command->inputFd = inputFd;
-            i += 2;
+            i += 2; //Increment by both {<} and filename
         }
         //Set Output File
         else if(strcmp(">", argList[i]) == 0){
@@ -202,12 +208,16 @@ enum ErrorType commandStructCreate(command* command, char* argList [512]){
                 break;
             }
             command->outputFd = outputFd;
-            i += 2;
+            i += 2; //Increment by both {>} and filename
         }
         //Set Background Command if & final argument and shell not in foreground only mode
-        else if(strcmp("&", argList[i]) == 0 && argList[i+1] == NULL && foregroundOnlyMode != 1){
-            command->foreground = 0;
-            i++;
+        else if(strcmp("&", argList[i]) == 0 && argList[i+1] == NULL){
+            //If It can run background processes, set it as such
+            if(!foregroundOnlyMode){
+                command->foreground = 0;
+            }
+            i++; // Increment index in either case to prevent unexpected token in execvp args
+
         }
         //If none of those cases apply, append the argument to the first non-null spot in the command struct
         else {
@@ -271,6 +281,9 @@ int main(int arc, char* argv[]){
     ProcessList *backgroundProcessList = NULL;
 
     while(1){
+        //Check and Remove any Finished Processes
+        killFinishedProcesses(&backgroundProcessList);
+        
         //Get Input command from user
         printf(": ");
         fflush(stdout);
@@ -281,20 +294,20 @@ int main(int arc, char* argv[]){
             bytes_read = getline(&cmdText, &lenRead, stdin);
         } while (bytes_read == -1 && errno == EINTR);
         
-        //Check and Remove any Finished Processes
-        killFinishedProcesses(&backgroundProcessList);
+        
         // Reprompt on comment or newline
         if (*cmdText == '#' || *cmdText == '\n') {continue;}
 
         //Seperate cmdText into arguments
         char** argList = parseCommandInput(cmdText);
 
-        //Break from Main Process Loop if Error in Command
+        //Break from Main Process Loop if Fatal Error in command (No arguments, or first argument >, <, or &)
         if (*argList == NULL || strcmp("<", *argList) == 0 || strcmp(">", *argList) == 0 || strcmp("&", *argList) == 0) {break;}
         
         //Perform program requested, if Not exit, cd, or status, pass off to fork
         switch (getCommandType(*argList)){
             case CMD_EXIT:
+                //Free all memory and exit program gracefully
                 freeArgs(argList);
                 while (backgroundProcessList != NULL) {
                     ProcessList *temp = backgroundProcessList;
@@ -302,7 +315,7 @@ int main(int arc, char* argv[]){
                     free(temp);
                 }
                 free(cmdText);
-                return 0;
+                return EXIT_SUCCESS;
             case CMD_CD:
             {
                 char* startDir = getcwd(NULL, 0);
@@ -322,6 +335,7 @@ int main(int arc, char* argv[]){
 						setenv("PWD", currDir, 1);
 						free(currDir);
 					} else {
+                        //Occours when ERRNO is ENOTDIR
                         printf("Cannot Change to %s: Not a Directory\n", newDir);
                     }
                 }
@@ -330,6 +344,7 @@ int main(int arc, char* argv[]){
             }
                 break;
             case CMD_STATUS:
+                //Output Exiting status or killing signal of most recent foreground processs
                 if(terminatedBySignal){
                     printf("Last Foreground Process Signaled with %d", lastForegroundStatus);
                 } else{
@@ -378,13 +393,17 @@ int main(int arc, char* argv[]){
 								sigaction(SIGINT, &actionSIGINT, NULL);
 							}
 							//Redirect Input and Output to struct values
-							if (dup2(newCommand.inputFd, STDIN_FILENO) == -1) { printf("IO Redirection Failed"); exit(EXIT_FAILURE); }
-							if (dup2(newCommand.outputFd, STDOUT_FILENO) == -1) { printf("IO Redirection Failed"); exit(EXIT_FAILURE); }
+							if (dup2(newCommand.inputFd, STDIN_FILENO) == -1) { 
+                                printf("IO Redirection Failed");
+                                exit(EXIT_FAILURE); }
+							if (dup2(newCommand.outputFd, STDOUT_FILENO) == -1) { 
+                                printf("IO Redirection Failed"); 
+                                exit(EXIT_FAILURE); }
                             
                             //Execute Command
                             execvp(newCommand.argList[0], newCommand.argList);
                             perror("execvp error");
-                            //Cleanup
+                            //Cleanup on Execvp Error
                             while (backgroundProcessList != NULL) {
 								ProcessList *temp = backgroundProcessList;
 								backgroundProcessList =  backgroundProcessList->next;
@@ -399,6 +418,7 @@ int main(int arc, char* argv[]){
                             if(newCommand.foreground){
                                 int childStatus;
                                 waitpid(childCmd, &childStatus, 0);
+                                //Update lastforegoundstatus
                                 if(terminatedBySignal = WIFSIGNALED(childStatus)){
                                     lastForegroundStatus = WTERMSIG(childStatus);
                                 } else {
