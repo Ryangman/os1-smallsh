@@ -1,5 +1,5 @@
-/* smallsh.c - CS374 Assignment 3
- * 
+/** smallsh.c - CS374 Assignment 3
+ * Basic Unix shell clone with functionality for all standard bash commands, input/output redirection, process management
  * Author: Ryan Grossman
  * Date: 5/2/2024
  */
@@ -171,11 +171,6 @@ enum ErrorType commandStructCreate(command* command, char* argList [512]){
     //Set command structs arglist to NULL for length of command line arguments
     memset(command->argList, 0, sizeof(command->argList));
     
-    // printf("Initialized to null:\n");
-    // for (int i = 0; command->argList[i] != NULL; i++) {
-    //         printf("arglist[%d]: %s\n", i, command->argList[i]);
-    // }
-    // printf("Finished\n");
     //Default Command Setup
     command->inputFd = STDIN_FILENO;
 	command->outputFd = STDOUT_FILENO;
@@ -229,18 +224,11 @@ enum ErrorType commandStructCreate(command* command, char* argList [512]){
         //If none of those cases apply, append the argument to the first non-null spot in the command struct
         else {
             command->argList[commandNum] = argList[i];
-            // printf("newArg[%d]: %s\n", commandNum, command->argList[commandNum]);
             commandNum++;
             i++;
-
         }
 
     }
-    // printf("Finished Parsing Struct\n");
-    // for (int i = 0; command->argList[i] != NULL; i++) {
-    //         printf("arglist[%d]: %s\n", i, command->argList[i]);
-    // }
-    // printf("Read Everything\n");
     //Redirect input and output to dev/null for background processes if not already redirected
     if(!command->foreground && command->inputFd == STDIN_FILENO) { command->inputFd = open("/dev/null", O_RDONLY);}
     if(!command->foreground && command->outputFd == STDOUT_FILENO) { command->outputFd = open("/dev/null", O_WRONLY);}
@@ -286,7 +274,6 @@ int main(int arc, char* argv[]){
     sigfillset(&actionSIGTSTP.sa_mask);
     actionSIGTSTP.sa_flags = 0;
     sigaction(SIGTSTP, &actionSIGTSTP, NULL);
-
 
     char* cmdText = NULL;
     size_t lenRead = 0;
@@ -366,8 +353,10 @@ int main(int arc, char* argv[]){
                 break;
             default:
             {
+                //Make Struct for command to pass of to execvp
                 command newCommand;
                 enum ErrorType cmdErrors = commandStructCreate(&newCommand, argList);
+                //Exit Early if fatal error (input/output fd) is detected when creating struct
                 switch(cmdErrors){
                     case NO_INPUT_FILE:
                         printf("Expected Filename After <\n");
@@ -379,14 +368,7 @@ int main(int arc, char* argv[]){
                         printf("File could not be opened\n");
                         continue;
                 }
-                // Testing Proper Struct Creation
-                // printf("Arguments:\n");
-                // for (int i = 0; i < 512 && newCommand.argList[i] != NULL ; ++i) {
-                //     printf("argList[%d]: %s\n", i, newCommand.argList[i]);
-                // }
-                // printf("Input File Descriptor: %d\n", newCommand.inputFd);
-                // printf("Output File Descriptor: %d\n", newCommand.outputFd);
-                // printf("Foreground: %d\n", newCommand.foreground);
+                // If No Errors, Try to make a child
                 if(cmdErrors == NO_ERROR){
                     // Fork and exec new command
                     pid_t childCmd = fork();
@@ -415,7 +397,7 @@ int main(int arc, char* argv[]){
                             
                             //Execute Command
                             execvp(newCommand.argList[0], newCommand.argList);
-                            perror("execvp error");
+                            perror("EXECVP:");
                             //Cleanup on Execvp Error
                             while (backgroundProcessList != NULL) {
 								ProcessList *temp = backgroundProcessList;
